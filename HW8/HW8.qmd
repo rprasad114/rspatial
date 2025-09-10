@@ -1,0 +1,188 @@
+---
+title: "HW8"
+author: "Radhika Prasad"
+date: today
+toc: true
+number-sections: true
+---
+
+## read data in R
+```{r}
+pacman::p_load(sf, dplyr, tmap)
+
+# File geodatabase
+brFn = 'C:/Users/19079/OneDrive/spatial analysis class/homework/HW8/data/BR.gdb'
+
+st_layers(brFn)
+
+BRBLK = read_sf(brFn, layer='BRBLK')
+BRCenter = read_sf(brFn, layer='BRCenter')
+
+```
+
+
+## data preparation
+```{r}
+
+brBlk <- BRBLK[, c("Popu2020", "Shape")]
+
+brBlkCRS = st_crs(brBlk)
+
+st_BRcenter= st_crs(BRCenter)
+
+brBlkCRS$Name
+
+st_BRcenter$Name
+
+brBlkUtm <- st_transform(brBlk, st_crs(BRCenter))
+
+st_crs(brBlkUtm)$Name
+
+source('C:/Users/19079/OneDrive/spatial analysis class/homework/HW8/st_buffer_rings.r')
+
+dists = seq(1000, 25000, 1000)
+
+rings = st_buffer_rings(BRCenter, dists)
+
+
+save(rings, file='data/ring.rda')
+
+```
+
+##  Analysis based on intersection
+```{r}
+
+#calculate area of each block
+brBlkUtm$Area = st_area(brBlkUtm)
+
+library(units)
+
+#Calculate population density of the blocks.
+brBlkUtm$PopDen = brBlkUtm$Popu2020/brBlkUtm$Area
+brBlkUtm$PopDen = set_units(brBlkUtm$PopDen, '1 km-2')
+
+#2. Intersect rings with blocks, name the results as blkRings.
+blkRings <- st_intersection(brBlkUtm, rings)
+
+#Calculate area (named as InterArea) and population (named as EstPop) in the intersected areas.
+blkRings$InterArea = st_area(blkRings)
+blkRings$EstPop = blkRings$PopDen*blkRings$InterArea
+
+#. Calculate population density (named as PopDenInter) in the concentric rings using spatial aggregation. The spatial aggregation will dissolve polygons in blkRings based on the ring distance.
+
+DissRings = blkRings |>
+  group_by(distance) |>
+  summarize(Population = sum(EstPop),
+            Area = sum(InterArea)) |>
+  mutate(PopDen = set_units(Population/Area, '1 km-2'))
+
+
+
+```
+
+## Map of population Density across Concentric Rings based on block data
+```{r}
+pacman::p_load(RColorBrewer)
+tmap_mode('plot')
+# set the color scheme
+my.palette = brewer.pal(7, name='YlOrRd')
+
+# Add plot layer by layer
+tm_shape(DissRings) +
+  tm_polygons(title='Pop Density', col='PopDen',
+              n=7, style='jenks', palette=my.palette) +
+  tm_layout(legend.position=c('left','bottom'),
+            legend.format = list(text.separator='-',
+                                 digits=0)) +
+  tm_shape(BRCenter) + tm_symbols(col='black', size=0.2) +
+  tm_compass(type='arrow', position = c('LEFT','center')) +
+  tm_scale_bar(breaks = c(0, 3, 6), text.size = 1, position = c('LEFT','center'))
+
+
+```
+
+## Analysis based on spatial join
+
+```{r}
+
+
+# Extract the population column after CRS transformation
+
+brBlock = BRBLK['Popu2020']
+
+st_crs(brBlock)$Name
+
+brBlockUTM = st_transform(brBlock, st_BRcenter)
+
+st_crs(brBlockUTM)$Name
+
+# Source file and calculate centroids
+source('C:/Users/19079/OneDrive/spatial analysis class/homework/HW8/st_centroids.r')
+brBlkPt = st_centroid(brBlockUTM)
+
+# Save the results
+write_sf(brBlkPt, 'C:/Users/19079/OneDrive/spatial analysis class/homework/HW8/data/brBlkPt_r.shp')
+save(brBlkPt, file='C:/Users/19079/OneDrive/spatial analysis class/homework/HW8/data/brBlkPt_r.rda')
+
+DissRingsJoin = DissRings
+
+# Join DissRings with centroids and calculate population density
+DissRingsJoin = st_join(DissRings, brBlkPt) |>
+  group_by(distance) |>
+  summarize(PopJoin = sum(Popu2020)) |>
+  mutate(Area = st_area(DissRings)) |>
+  mutate(PopDenJoin = set_units(PopJoin / Area, '1/km^2'))
+
+
+
+
+
+
+
+```
+## Map based on spatial join
+```{r}
+# set the color scheme
+my.palette = brewer.pal(7, name='YlOrRd')
+
+# Add plot layer by layer
+tm_shape(DissRingsJoin) +
+  tm_polygons(title='Pop Density', col='PopDenJoin',
+              n=7, style='jenks', palette=my.palette) +
+  tm_layout(legend.position=c('left','bottom'),
+            legend.format = list(text.separator='-',
+                                 digits=0)) +
+  tm_shape(BRCenter) + tm_symbols(col='black', size=0.2) +
+  tm_compass(type='arrow', position = c('LEFT','center')) +
+  tm_scale_bar(breaks = c(0, 3, 6), text.size = 1, position = c('LEFT','center'))
+```
+
+##  Comparing the two results
+```{r}
+
+# attribute join
+DissRings.df = st_drop_geometry(DissRings) |>
+  select(distance, PopTrt = Population, PopDenTrt = PopDen)
+DissRingsAll = left_join(DissRingsJoin, DissRings.df, by='distance')
+
+
+popdenplot = DissRingsAll[c('PopDenTrt','PopDenJoin')]
+plot(popdenplot, key.pos = 4)
+
+
+# plot both results
+DissRingsAll.df = st_drop_geometry(DissRingsAll)
+# Make the plot
+par(mar=c(4, 5, 0.5, 0.5)) # set plot space around the plot
+matplot(DissRingsAll.df$distance,
+        DissRingsAll.df[,c('PopDenTrt','PopDenJoin')],
+        type = 'b', col = 2:3, pch = 21:22, lty='solid', lwd=2,
+        xlab = 'Distance (km)',
+        ylab = expression(paste('Population Density (person / ', km^2, ')')))
+legend( 20000, 800, c('tracts', 'blocks'),
+        pch = 21:22, lty='solid', col = 2:3 )
+
+
+```
+
+There is consistency but slight discrepancies in the variations of population density across the concentric rings based on PopDentrt and PopDenJoin
