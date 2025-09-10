@@ -1,0 +1,17 @@
+This is a dataset with 397 cars.
+
+mpg: Miles per gallon, the distance a car can drive with one gallon of gas.
+
+cylinders: the number of cylinders.
+
+displacement: engine displacement, i.e., the total volume of air that the pistons move in the engine's cylinders.
+
+horsepower: engine's maximum power output
+
+weight: The weight of the cars in lbs.
+
+acceleration: the rate at which its velocity changes
+
+year: model year
+
+name: name of the car

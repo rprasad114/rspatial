@@ -1,0 +1,203 @@
+---
+title: "GOG552 Homework 9"
+author: "Radhika Prasad"
+date: today
+toc: true
+number-sections: true
+---
+ 
+## read data in R
+```{r}
+getwd()
+
+library(rio)
+library(dplyr)
+library(tidyr)
+
+Auto=import("C:/Users/19079/OneDrive/spatial analysis class/homework/HW9/data/Auto.csv")
+
+Auto$horsepower<-as.numeric(Auto$horsepower)
+
+class(Auto$horsepower)
+
+any(is.na(Auto))
+
+Auto <- Auto %>% drop_na(mpg, horsepower)
+
+```
+
+## scatter plot of horsepower and mpg
+```{r}
+
+par(mar=c(5,6,1,0))
+plot (Auto$horsepower, Auto$mpg, xlim = c(0, 250))
+```
+
+Based on scatter plot the the relationship between mpg and horsepower could be negatively related. 
+
+## Simple linear regression
+
+```{r}
+
+
+attach(Auto)
+
+
+reg1 = lm(mpg ~ horsepower)
+
+summary(reg1)
+
+# Round and convert to data frame
+reg1.coef <- as.data.frame(round(summary(reg1)$coefficients, 4))
+
+knitr::kable(reg1.coef)
+
+pacman::p_load(dplyr, tibble, flextable)
+
+reg1.coef |>
+  as.data.frame() |>
+  rownames_to_column() |>
+  rename(Predictor = rowname) |>
+  flextable()
+
+predict_mpg <- predict(reg1, newdata = data.frame(horsepower = 98))
+
+predict_mpg
+
+
+```
+
+Yes, there is a significant negative association between horsepower and mpg. 
+
+When the the horsepower is 98 the corresponding mpg is 24.47
+
+## fitted line overlaying with the scatter plot of horsepower and mpg
+```{r}
+plot (horsepower,mpg, xlim = c(0, 250))
+abline(reg1,col='red')
+```
+
+## simple resgression model diagnostics 
+```{r}
+
+pacman::p_load(lmtest)
+
+##Linearity
+rbow = raintest(reg1)
+rbow
+
+#p-value 1.486e-07< 0.05 indicating relationship between horsepower and mpg is linear
+
+# Homoscedasticity
+
+model_data <- model.frame(reg1)
+horsepower <- model_data$horsepower
+resids <- residuals(reg1)
+plot(horsepower, resids, pch=20, ylab="Residuals", cex.axis=1.5, cex.lab=1.5)
+abline(h=0, lwd=2, col="red")
+
+
+```
+
+## Multiple linear regression.
+
+```{r}
+
+par(mar = c(6, 6, 4, 4))
+
+plot(Auto, upper.panel=NULL)
+
+
+
+```
+There may be a relationship with mpg and horsepower or weight
+
+```{r}
+reg2 <- lm(mpg ~ . - name, data = Auto)
+
+ mlrs = summary(reg2)
+
+reg2.coef = round(mlrs$coefficients,4)
+
+reg2.coef |>
+  as.data.frame() |>
+  rownames_to_column() |>
+  rename(Predictor = rowname) |>
+  flextable()
+```
+
+Which predictors appear to have a statistically significant relationship to the response? 
+The predictors Weight and year are significant. 
+
+What does the coefficient for the year variable suggest? 
+
+For each additional year, there is a significant increase in mpg, holding all variables constant. 
+
+## Model Diagnostics
+
+```{r, fig.width=10, fig.height=7}
+# Linearity 
+
+plot(reg2, which = 1)
+
+pacman::p_load(lmtest)
+rt.reg2 = raintest(reg2)
+rt.reg2
+
+#p-value = 5.969e-06 is less than 0.05. relationship is not linear
+
+#Homoscedasticity 
+
+bp.reg2 = bptest(reg2)
+bp.reg2
+
+#p-value 4.028e-05 is less than 0.05 so cannot assume mean is 0 nor constant variance
+
+# Collinearity 
+
+pacman::p_load(car)
+
+try( vif( lm(mpg~., data=Auto) ) )
+
+alias( lm(mpg~., data=Auto) )
+
+# Potential outliers 
+
+pacman::p_load(MASS)
+
+# Potential outliers 
+
+pacman::p_load(MASS)
+
+
+# Set larger plot margins
+par(mar = c(6, 6, 4, 2))
+
+dev.new(width = 10, height = 6)
+
+
+st.resids = studres(reg2)
+n = length(st.resids)
+r = range(st.resids)
+plot(st.resids, ylim = r*1.3, xlim = c(-1,n+1))
+text(1:n, st.resids, labels=1:n, pos=1)
+abline(h=3, col='red')
+abline(h=-3, col='red')
+
+# Potential high influential points 
+
+hv = hatvalues(reg2)
+hv.df = as.data.frame(hatvalues(reg2))
+names(hv.df) = 'hv'
+mn = mean(hatvalues(reg2))
+hv.df$warn = ifelse(hv.df[, 'hv']>3*mn,
+                    'high influential',
+                    ifelse(hv.df[, 'hv']>2*mn,
+                           'influential', '-' ))
+hv.dfs = hv.df[hv.df$hv>2*mn,]
+
+hv.dfs
+
+```
+
+
